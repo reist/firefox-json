@@ -49,38 +49,6 @@ module Firefox
     end
   end
 
-  class Session < Base
-    attr_reader :windows, :closed_windows
-
-    REQUIRED_KEY = 'windows'
-
-    def initialize data
-      check_keys data
-      @windows = data['windows'].map {|wh| Window.new(wh)}
-      @closed_windows = data['_closedWindows'].map {|wh| Window.new(wh, true)}
-    end
-
-    def dump
-      @data['windows'] = @windows.map(&:dump)
-      @data['_closedWindows'] = @closed_windows.map(&:dump)
-      @data
-    end
-
-    def current_urls
-      windows.map(&:current_urls)
-    end
-
-    def to_json
-      Oj.dump dump, :mode => :strict
-    end
-
-    def to_s
-      closed_text = ' closed='+closed_windows.size.to_s if closed_windows.size>0
-      warning = File.basename(path) if File.basename(path).split('.')[0] == 'recovery'
-      "#<Firefox::Session##{warning} windows=#{windows.size}#{closed_text}>"
-    end
-  end
-
   module SelectedIndex
     def self.included target
       target.send(:attr_reader, :selected_idx)
@@ -118,6 +86,41 @@ module Firefox
     def dump
       @data[self.class::INDEX_KEY] = sanify_selected_idx
       super
+    end
+  end
+
+  class Session < Base
+    attr_reader :windows, :closed_windows
+
+    REQUIRED_KEY = 'windows'
+    INDEX_KEY = 'selectedWindow'
+    include SelectedIndex
+
+    def initialize data
+      check_keys data
+      @windows = data['windows'].map {|wh| Window.new(wh)}
+      @closed_windows = data['_closedWindows'].map {|wh| Window.new(wh, true)}
+      init_index
+    end
+
+    def dump
+      @data['windows'] = @windows.map(&:dump)
+      @data['_closedWindows'] = @closed_windows.map(&:dump)
+      @data
+    end
+
+    def current_urls
+      windows.map(&:current_urls)
+    end
+
+    def to_json
+      Oj.dump dump, :mode => :strict
+    end
+
+    def to_s
+      closed_text = ' closed='+closed_windows.size.to_s if closed_windows.size>0
+      warning = File.basename(path) if File.basename(path).split('.')[0] == 'recovery'
+      "#<Firefox::Session##{warning} windows=#{windows.size}#{closed_text}>"
     end
   end
 
