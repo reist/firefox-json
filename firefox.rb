@@ -80,29 +80,53 @@ module Firefox
     end
   end
 
-  class Window < Base
-    attr_reader :tabs, :closed_tabs, :selected_idx, :is_closed
+  module SelectedIndex
+    def self.included target
+      target.attr_reader :selected_idx
+    end
 
-    REQUIRED_KEY = 'tabs'
-
-    def initialize data, is_closed = false
-      check_keys data
-      @is_closed = is_closed
-      @tabs = data['tabs'].map {|wh| Tab.new(wh)}
-      @closed_tabs = data['_closedTabs'].map {|wh| Tab.new(wh)}
-      @selected_idx = data['selected']
+    def init_index
+      @selected_idx = @data[self.class::INDEX_KEY]
+      if !@selected_idx || @selected_idx > send(self.class::REQUIRED_KEY).size
+        reset_selected_idx
+      end
     end
 
     def selected_idx= idx
-      if @tabs.size >= idx
-        @data['selected'] = @selected_idx = idx
+      if send(self.class::REQUIRED_KEY).size >= idx
+        @selected_idx = idx
       else
         @selected_idx
       end
     end
 
     def reset_selected_idx
-      @selected_idx = send(REQUIRED_KEY).size
+      @selected_idx = send(self.class::REQUIRED_KEY).size
+    end
+
+    def selected
+      send(self.class::REQUIRED_KEY)[@selected_idx-1]
+    end
+
+    def dump
+      @data[self.class::INDEX_KEY] = @selected_idx
+      super
+    end
+  end
+
+  class Window < Base
+    attr_reader :tabs, :closed_tabs, :is_closed
+
+    REQUIRED_KEY = 'tabs'
+    INDEX_KEY = 'selected'
+    include SelectedIndex
+
+    def initialize data, is_closed = false
+      check_keys data
+      @is_closed = is_closed
+      @tabs = data['tabs'].map {|wh| Tab.new(wh)}
+      @closed_tabs = data['_closedTabs'].map {|wh| Tab.new(wh)}
+      init_index
     end
 
     def hash
@@ -123,10 +147,6 @@ module Firefox
       tabs.map(&:selected_url)
     end
 
-    def selected
-      tabs[selected_idx-1]
-    end
-
     def selected_title
       selected.selected.title
     end
@@ -137,9 +157,11 @@ module Firefox
   end
 
   class Tab < Base
-    attr_reader :entries, :selected_idx, :is_closed
+    attr_reader :entries, :is_closed
 
     REQUIRED_KEY = 'entries'
+    INDEX_KEY = 'index'
+    include SelectedIndex
 
     def initialize data
       if data['state']
@@ -151,10 +173,7 @@ module Firefox
       tab_state = is_closed ? data['state'] : data
       check_keys tab_state
       @entries = tab_state['entries'].map {|wh| Entry.new(wh)}
-      @selected_idx = tab_state['index']
-      if !@selected_idx || @selected_idx > @entries.size
-        reset_selected_idx
-      end
+      init_index
     end
 
     def hash
@@ -168,14 +187,6 @@ module Firefox
     def dump
       @data['entries'] = @entries.map(&:dump)
       is_closed ? @closed_data.merge('state' => @data) : @data
-    end
-
-    def selected
-      entries[selected_idx-1]
-    end
-
-    def reset_selected_idx
-      @selected_idx = send(REQUIRED_KEY).size
     end
 
     def selected_title
