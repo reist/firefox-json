@@ -88,14 +88,20 @@ module Firefox
 
     def init_index
       @selected_idx = @data[self.class::INDEX_KEY]
-      if !@selected_idx || @selected_idx > send(self.class::REQUIRED_KEY).size
-        reset_selected_idx
-      end
+      sanify_selected_idx
     end
 
     def selected_idx= idx
       if send(self.class::REQUIRED_KEY).size >= idx
         @selected_idx = idx
+      else
+        @selected_idx
+      end
+    end
+
+    def sanify_selected_idx
+      if !@selected_idx || @selected_idx > send(self.class::REQUIRED_KEY).size
+        reset_selected_idx
       else
         @selected_idx
       end
@@ -110,7 +116,7 @@ module Firefox
     end
 
     def dump
-      @data[self.class::INDEX_KEY] = @selected_idx
+      @data[self.class::INDEX_KEY] = sanify_selected_idx
       super
     end
   end
