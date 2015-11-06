@@ -302,7 +302,9 @@ module Firefox
     end
 
     def [](name)
-      Profile.new @profile_map[name], @ff_path
+      if @profile_map.key?(name)
+        Profile.new @profile_map[name], @ff_path
+      end
     end
   end
 
