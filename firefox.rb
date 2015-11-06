@@ -1,5 +1,16 @@
 require 'oj'
 
+class Object
+  def try *attrs
+    send(*attrs)
+  end
+end
+
+class NilClass
+  def try *_
+  end
+end
+
 module Firefox
   class Base
     attr_accessor :path
@@ -83,7 +94,7 @@ module Firefox
     end
 
     def selected_idx= idx
-      if @tabs.size > idx
+      if @tabs.size >= idx
         @data['selected'] = @selected_idx = idx
       else
         @selected_idx
@@ -91,7 +102,7 @@ module Firefox
     end
 
     def reset_selected_idx
-      selected_idx = @tabs.size - 1
+      @selected_idx = send(REQUIRED_KEY).size
     end
 
     def hash
@@ -141,6 +152,9 @@ module Firefox
       check_keys tab_state
       @entries = tab_state['entries'].map {|wh| Entry.new(wh)}
       @selected_idx = tab_state['index']
+      if !@selected_idx || @selected_idx > @entries.size
+        reset_selected_idx
+      end
     end
 
     def hash
@@ -160,12 +174,16 @@ module Firefox
       entries[selected_idx-1]
     end
 
+    def reset_selected_idx
+      @selected_idx = send(REQUIRED_KEY).size
+    end
+
     def selected_title
-      selected.title
+      selected.try(:title)
     end
 
     def selected_url
-      selected.url
+      selected.try(:url)
     end
 
     def to_s
