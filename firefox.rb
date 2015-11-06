@@ -1,4 +1,5 @@
 require 'oj'
+require 'inifile'
 
 class Object
   def try *attrs
@@ -82,7 +83,7 @@ module Firefox
 
   module SelectedIndex
     def self.included target
-      target.attr_reader :selected_idx
+      target.send(:attr_reader, :selected_idx)
     end
 
     def init_index
@@ -251,15 +252,51 @@ module Firefox
     load IO.read(js_path), js_path
   end
 
+  class Profiles
+    class Profile
+      def initialize data, ff_path
+        @data = data
+        @ff_path = ff_path
+      end
+
+      def path
+        dir = @data['IsRelative'] == 1 ? File.join(@ff_path, @data['Path']) : @data['Path']
+        File.join(dir, 'sessionstore.js')
+      end
+
+      def read
+        IO.read(path)
+      end
+    end
+
+    def initialize
+      @ff_path = File.expand_path('~/.mozilla/firefox')
+      data = IniFile.load(File.join(@ff_path, 'profiles.ini'))
+      p_sections = data.sections.select {|section| section.start_with?('Profile')}
+      @profile_map = p_sections.reduce({}) do |hash, section|
+        profile = data[section]
+        hash[profile['Name'].freeze] = profile.freeze
+        hash
+      end
+    end
+
+    def list
+      @profile_map.keys.dup
+    end
+
+    def [](name)
+      Profile.new @profile_map[name], @ff_path
+    end
+  end
+
+  def self.available_profiles
+    Profiles.new.list
+  end
+
   def self.load_profile name
-    require 'inifile'
-    ff_path = File.expand_path('~/.mozilla/firefox')
-    profiles = IniFile.load("#{ff_path}/profiles.ini")
-    section = profiles.sections.find {|section| section.start_with?('Profile') && profiles[section]['Name'] == name}
-    return false unless section
-    profile = profiles[section]
-    dir = profile['IsRelative'] == 1 ? File.join(ff_path, profile['Path']) : profile['Path']
-    js_path = File.join(dir, 'sessionstore.js')
-    load IO.read(js_path), js_path
+    profiles = Profiles.new
+    profile = profiles[name]
+    return false unless profile
+    load profile.read, profile.path
   end
 end
