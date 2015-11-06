@@ -17,14 +17,21 @@ module Firefox
     attr_accessor :path
     @@inherited = []
 
+    def initialize data
+      setup data
+    end
+
     def inspect
       to_s
     end
 
-    def check_keys data
-      key = self.class::REQUIRED_KEY
-      unless data && data[key]
-        raise ArgumentError, "Not a Firefox #{self.class.name.downcase} - missing #{key} key"
+    def eql? object
+      object.is_a?(self.class) && hash == object.hash
+    end
+
+    def setup data
+      unless data && data[required_key]
+        raise ArgumentError, "Not a Firefox #{self.class.name.downcase} - missing #{required_key} key"
       end
       @data = data
     end
@@ -32,6 +39,10 @@ module Firefox
     def reload
       raise ArgumentError, 'Path not given' unless @path
       @data = Oj.load_file(@path, :mode => :strict)
+    end
+
+    def dump
+      @data
     end
 
     def save path=nil
@@ -47,20 +58,65 @@ module Firefox
     def self.children
       @@inherited
     end
-  end
 
-  module SelectedIndex
-    def self.included target
-      target.send(:attr_reader, :selected_idx)
+    def self.mattr_accessor name
+      class_eval <<-CODE, __FILE__, __LINE__ + 1
+        def self.#{name}
+          @#{name}
+        end
+        def #{name}
+          self.class.#{name}
+        end
+      CODE
     end
 
-    def init_index
-      @selected_idx = @data[self.class::INDEX_KEY]
+    def self.required_key= key
+      @required_key = key.freeze
+    end
+    mattr_accessor :required_key
+
+    def self.set_collection item_class, index_key, with_closed = false
+      include Collection
+      @index_key = index_key
+      @item_class = item_class
+      base_key_name = item_class.name.split('::')[-1].sub(/y$/, 'ie') + 's'
+      self.required_key = base_key_name.downcase
+      define_method @required_key do
+        @collection
+      end
+      if with_closed
+        @closed_key = "_closed#{base_key_name}"
+        define_method "closed_#{required_key}" do
+          @closed_collection
+        end
+      end
+    end
+  end
+
+  module Collection
+    def self.included target
+      target.send(:attr_reader, :selected_idx)
+      [:item_class, :closed_key, :index_key].each do |accessor|
+        target.mattr_accessor accessor
+      end
+    end
+
+    def setup data
+      super
+      @collection = convert required_key, false
+      if closed_key
+        @closed_collection = convert closed_key, true
+      end
+      @selected_idx = @data[index_key]
       sanify_selected_idx
     end
 
+    def convert key, is_closed
+      @data[key].map {|hash| item_class.new(hash, is_closed)}
+    end
+
     def selected_idx= idx
-      if send(self.class::REQUIRED_KEY).size >= idx
+      if send(required_key).size >= idx
         @selected_idx = idx
       else
         @selected_idx
@@ -68,7 +124,7 @@ module Firefox
     end
 
     def sanify_selected_idx
-      if !@selected_idx || @selected_idx > send(self.class::REQUIRED_KEY).size
+      if !@selected_idx || @selected_idx > send(required_key).size
         reset_selected_idx
       else
         @selected_idx
@@ -76,127 +132,70 @@ module Firefox
     end
 
     def reset_selected_idx
-      @selected_idx = send(self.class::REQUIRED_KEY).size
+      @selected_idx = send(required_key).size
     end
 
     def selected
-      send(self.class::REQUIRED_KEY)[@selected_idx-1]
+      send(required_key)[@selected_idx-1]
     end
 
     def dump
-      @data[self.class::INDEX_KEY] = sanify_selected_idx
+      @data[index_key] = sanify_selected_idx
+      @data[required_key] = @collection.map(&:dump)
+      if closed_key
+        @data[closed_key] = @closed_collection.map(&:dump)
+      end
       super
     end
   end
 
-  class Session < Base
-    attr_reader :windows, :closed_windows
+  class Entry < Base
+    attr_reader :url, :title, :referrer
+    self.required_key = 'url'
 
-    REQUIRED_KEY = 'windows'
-    INDEX_KEY = 'selectedWindow'
-    include SelectedIndex
-
-    def initialize data
-      check_keys data
-      @windows = data['windows'].map {|wh| Window.new(wh)}
-      @closed_windows = data['_closedWindows'].map {|wh| Window.new(wh, true)}
-      init_index
+    def initialize data, _closed
+      setup data
+      @url = data['url']
+      @title = data['title']
+      @referrer = data['referrer']
+      @id = data['id']
+      @docshell_id = data['docshellID']
+      @doc_identifier = data['docIdentifier']
     end
 
-    def dump
-      @data['windows'] = @windows.map(&:dump)
-      @data['_closedWindows'] = @closed_windows.map(&:dump)
-      @data
-    end
-
-    def current_urls
-      windows.map(&:current_urls)
-    end
-
-    def to_json
-      Oj.dump dump, :mode => :strict
-    end
-
-    def to_s
-      closed_text = ' closed='+closed_windows.size.to_s if closed_windows.size>0
-      warning = File.basename(path) if File.basename(path).split('.')[0] == 'recovery'
-      "#<Firefox::Session##{warning} windows=#{windows.size}#{closed_text}>"
-    end
-  end
-
-  class Window < Base
-    attr_reader :tabs, :closed_tabs, :is_closed
-
-    REQUIRED_KEY = 'tabs'
-    INDEX_KEY = 'selected'
-    include SelectedIndex
-
-    def initialize data, is_closed = false
-      check_keys data
-      @is_closed = is_closed
-      @tabs = data['tabs'].map {|wh| Tab.new(wh)}
-      @closed_tabs = data['_closedTabs'].map {|wh| Tab.new(wh)}
-      init_index
+    def domain
+      url.split('/')[2]
     end
 
     def hash
-      tabs.hash
-    end
-
-    def eql? _window
-      _window.is_a?(Firefox::Window) && hash == _window.hash
-    end
-
-    def dump
-      @data['tabs'] = @tabs.map(&:dump)
-      @data['_closedTabs'] = @closed_tabs.map(&:dump)
-      @data
-    end
-
-    def current_urls
-      tabs.map(&:selected_url)
-    end
-
-    def selected_title
-      selected.selected.title
+      url.hash
     end
 
     def to_s
-      "#<Firefox::Window#{' closed!' if is_closed} tabs=#{tabs.size}#{' closed='+closed_tabs.size.to_s if closed_tabs.size>0} selected=\"#{selected_title}\">"
+      "#<Firefox::Entry #{url}>"
     end
   end
 
   class Tab < Base
-    attr_reader :entries, :is_closed
+    attr_reader :is_closed
+    set_collection Entry, 'index'
 
-    REQUIRED_KEY = 'entries'
-    INDEX_KEY = 'index'
-    include SelectedIndex
-
-    def initialize data
-      if data['state']
-        @is_closed = true
+    # is_closed passed from Window and means the real data is inside the 'state' key
+    def initialize data, is_closed
+      @is_closed = is_closed
+      if is_closed
         @closed_data = data.reject {|k,_v| 'state' == k}
-      else
-        @is_closed = false
       end
       tab_state = is_closed ? data['state'] : data
-      check_keys tab_state
-      @entries = tab_state['entries'].map {|wh| Entry.new(wh)}
-      init_index
+      setup tab_state
     end
 
     def hash
       selected_url.hash
     end
 
-    def eql? _tab
-      _tab.is_a?(Firefox::Tab) && selected_url == _tab.selected_url
-    end
-
     def dump
-      @data['entries'] = @entries.map(&:dump)
-      is_closed ? @closed_data.merge('state' => @data) : @data
+      is_closed ? @closed_data.merge('state' => super) : super
     end
 
     def selected_title
@@ -216,57 +215,48 @@ module Firefox
     end
   end
 
-  class Entry < Base
-    attr_reader :url, :title, :referrer
-
-    REQUIRED_KEY = 'url'
+  class Window < Base
+    attr_reader :is_closed
+    set_collection Tab, 'selected', true
 
     def initialize data, is_closed = false
-      check_keys data
       @is_closed = is_closed
-      @url = data['url']
-      @title = data['title']
-      @referrer = data['referrer']
-      @id = data['id']
-      @docshell_id = data['docshellID']
-      @doc_identifier = data['docIdentifier']
-    end
-
-    def domain
-      url.split('/')[2]
+      setup data
     end
 
     def hash
-      url.hash
+      tabs.hash
     end
 
-    def eql? _entry
-      _entry.is_a?(Firefox::Entry) && url == _entry.url
+    def current_urls
+      tabs.map(&:selected_url)
     end
 
-    def dump
-      @data
+    def selected_title
+      selected.selected.title
     end
 
     def to_s
-      "#<Firefox::Entry #{url}>"
+      "#<Firefox::Window#{' closed!' if is_closed} tabs=#{tabs.size}#{' closed='+closed_tabs.size.to_s if closed_tabs.size>0} selected=\"#{selected_title}\">"
     end
   end
 
-  BAD_ARG = 'Not Firefox session data'.freeze
+  class Session < Base
+    set_collection Window, 'selectedWindow', true
 
-  def self.load string, path=nil
-    data = Oj.load(string, :mode => :strict)
-    raise ArgumentError, BAD_ARG unless data.is_a?(Hash)
-    klass = Base.children.find { |klass| data.key? klass::REQUIRED_KEY }
-    raise RuntimeError, BAD_ARG unless klass
-    o = klass.new data
-    o.path = path
-    o
-  end
+    def current_urls
+      windows.map(&:current_urls)
+    end
 
-  def self.load_file js_path='sessionstore.js'
-    load IO.read(js_path), js_path
+    def to_json
+      Oj.dump dump, :mode => :strict
+    end
+
+    def to_s
+      closed_text = ' closed='+closed_windows.size.to_s if closed_windows.size>0
+      warning = File.basename(path) if File.basename(path).split('.')[0] == 'recovery'
+      "#<Firefox::Session##{warning} windows=#{windows.size}#{closed_text}>"
+    end
   end
 
   class Profiles
@@ -310,6 +300,22 @@ module Firefox
 
   def self.available_profiles
     Profiles.new.list
+  end
+
+  BAD_ARG = 'Not Firefox session data'.freeze
+
+  def self.load string, path=nil
+    data = Oj.load(string, :mode => :strict)
+    raise ArgumentError, BAD_ARG unless data.is_a?(Hash)
+    klass = Base.children.find { |klass| data.key? klass.required_key }
+    raise RuntimeError, BAD_ARG unless klass
+    o = klass.new data
+    o.path = path
+    o
+  end
+
+  def self.load_file js_path='sessionstore.js'
+    load IO.read(js_path), js_path
   end
 
   def self.load_profile name
