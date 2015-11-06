@@ -236,22 +236,19 @@ module Firefox
     o
   end
 
-  def self.load_file js_path
+  def self.load_file js_path='sessionstore.js'
     load IO.read(js_path), js_path
   end
 
   def self.load_profile name
+    require 'inifile'
     ff_path = File.expand_path('~/.mozilla/firefox')
-    profile_dirs = Dir["#{ff_path}/*.#{name}/", "#{ff_path}/#{name}/"]
-    case profile_dirs.size
-    when 0
-      false
-    when 1
-      js_path = File.join(profile_dirs[0], 'sessionstore.js')
-      load IO.read(js_path), js_path
-    else
-      profiles = profile_dirs.map {|dir| File.basename(dir)}
-      raise ArgumentError, "Multiple profiles matched: #{profiles.join(', ')}"
-    end
+    profiles = IniFile.load("#{ff_path}/profiles.ini")
+    section = profiles.sections.find {|section| section.start_with?('Profile') && profiles[section]['Name'] == name}
+    return false unless section
+    profile = profiles[section]
+    dir = profile['IsRelative'] == 1 ? File.join(ff_path, profile['Path']) : profile['Path']
+    js_path = File.join(dir, 'sessionstore.js')
+    load IO.read(js_path), js_path
   end
 end
