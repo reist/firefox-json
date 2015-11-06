@@ -204,6 +204,10 @@ module Firefox
       selected.try(:url)
     end
 
+    def selected_domain
+      selected.try(:domain)
+    end
+
     def to_s
       "#<Firefox::Tab#{' closed!' if is_closed} entries=#{entries.size} selected=\"#{selected_title}\">"
     end
@@ -223,6 +227,10 @@ module Firefox
       @id = data['id']
       @docshell_id = data['docshellID']
       @doc_identifier = data['docIdentifier']
+    end
+
+    def domain
+      url.split('/')[2]
     end
 
     def hash
