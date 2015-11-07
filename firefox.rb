@@ -48,7 +48,7 @@ module Firefox
     def save path=nil
       path ||= @path
       raise ArgumentError, 'Path not given' unless path
-      File.open(path, 'w') {|f| f.write Oj.dump(dump, :mode => :strict)}
+      File.open(path, 'w') {|file| file.write Oj.dump(dump, :mode => :strict)}
     end
 
     def self.inherited klass
@@ -57,6 +57,10 @@ module Firefox
 
     def self.children
       @@inherited
+    end
+
+    def self.choose_for data
+      children.find { |klass| data.key? klass.required_key }
     end
 
     def self.mattr_accessor name
@@ -93,6 +97,7 @@ module Firefox
     end
   end
 
+  # Management of collections, closed items and the item in focus
   module Collection
     def self.included target
       target.send(:attr_reader, :selected_idx)
@@ -149,6 +154,7 @@ module Firefox
     end
   end
 
+  # The base of the session - a specific viewed site
   class Entry < Base
     attr_reader :url, :title, :referrer
     self.required_key = 'url'
@@ -176,6 +182,7 @@ module Firefox
     end
   end
 
+  # A tab collects all its history and knows whether it's closed or not
   class Tab < Base
     attr_reader :is_closed
     set_collection Entry, 'index'
@@ -184,7 +191,7 @@ module Firefox
     def initialize data, is_closed
       @is_closed = is_closed
       if is_closed
-        @closed_data = data.reject {|k,_v| 'state' == k}
+        @closed_data = data.reject {|key,_v| 'state' == key}
       end
       tab_state = is_closed ? data['state'] : data
       setup tab_state
@@ -215,6 +222,7 @@ module Firefox
     end
   end
 
+  # A collection of tabs, both current and previous
   class Window < Base
     attr_reader :is_closed
     set_collection Tab, 'selected', true
@@ -237,7 +245,7 @@ module Firefox
     end
 
     def by_domain
-      tabs.map(&:selected_domain).reduce(Hash.new(0)) {|h,host| h[host]+=1; h}.sort_by {|k,v| -v}
+      tabs.map(&:selected_domain).reduce(Hash.new(0)) {|h,host| h[host]+=1; h}.sort_by {|_,v| -v}
     end
 
     def to_s
@@ -245,6 +253,7 @@ module Firefox
     end
   end
 
+  # A collection of windows, both current and previous
   class Session < Base
     set_collection Window, 'selectedWindow', true
 
@@ -259,7 +268,9 @@ module Firefox
     end
   end
 
+  # Access to the profiles.ini file that links to all defined profiles and their locations
   class Profiles
+    # Collects methods to access a single profile's session file
     class Profile
       def initialize data, ff_path
         @data = data
@@ -318,11 +329,11 @@ module Firefox
   def self.load string, path=nil
     data = Oj.load(string, :mode => :strict)
     raise ArgumentError, BAD_ARG unless data.is_a?(Hash)
-    klass = Base.children.find { |klass| data.key? klass.required_key }
+    klass = Base.choose_for(data)
     raise RuntimeError, BAD_ARG unless klass
-    o = klass.new data
-    o.path = path
-    o
+    object = klass.new data
+    object.path = path
+    object
   end
 
   def self.load_file js_path='sessionstore.js'
