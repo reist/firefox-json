@@ -254,7 +254,7 @@ module Firefox
 
     def to_s
       closed_text = ' closed='+closed_windows.size.to_s if closed_windows.size>0
-      warning = File.basename(path) if File.basename(path).split('.')[0] == 'recovery'
+      warning = File.basename(path) if File.basename(path) != 'sessionstore.js'
       "#<Firefox::Session##{warning} windows=#{windows.size}#{closed_text}>"
     end
   end
@@ -267,8 +267,19 @@ module Firefox
       end
 
       def path
-        dir = @data['IsRelative'] == 1 ? File.join(@ff_path, @data['Path']) : @data['Path']
-        File.join(dir, 'sessionstore.js')
+        @path ||= @data['IsRelative'] == 1 ? File.join(@ff_path, @data['Path']) : @data['Path']
+      end
+
+      def good_path
+        File.join(path, 'sessionstore.js')
+      end
+
+      def recovery_path
+        File.join(path, 'sessionstore-backups', 'recovery.js')
+      end
+
+      def session_path
+        File.exist?(good_path) ? good_path : recovery_path
       end
 
       def read
@@ -322,6 +333,10 @@ module Firefox
     profiles = Profiles.new
     profile = profiles[name]
     return false unless profile
-    load profile.read, profile.path
+    begin
+      load_file profile.session_path
+    rescue
+      load_file profile.recovery_path
+    end
   end
 end
