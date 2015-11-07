@@ -248,10 +248,6 @@ module Firefox
       windows.map(&:current_urls)
     end
 
-    def to_json
-      Oj.dump dump, :mode => :strict
-    end
-
     def to_s
       closed_text = ' closed='+closed_windows.size.to_s if closed_windows.size>0
       warning = File.basename(path) if File.basename(path).split('.')[0] == 'recovery'
