@@ -236,6 +236,10 @@ module Firefox
       selected.selected.title
     end
 
+    def by_domain
+      tabs.map(&:selected_domain).reduce(Hash.new(0)) {|h,host| h[host]+=1; h}.sort_by {|k,v| -v}
+    end
+
     def to_s
       "#<Firefox::Window#{' closed!' if is_closed} tabs=#{tabs.size}#{' closed='+closed_tabs.size.to_s if closed_tabs.size>0} selected=\"#{selected_title}\">"
     end
