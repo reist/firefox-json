@@ -20,8 +20,8 @@ module FirefoxJson
       end
     end
 
-    def initialize
-      @ff_path = File.join(Dir.home, '.mozilla/firefox')
+    def initialize(path = File.join(Dir.home, '.mozilla/firefox'))
+      @ff_path = path
       data = IniFile.load(File.join(@ff_path, 'profiles.ini'))
       p_sections = data.sections.select {|section| section.start_with?('Profile')}
       @profile_map = p_sections.reduce({}) do |hash, section|
