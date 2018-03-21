@@ -41,14 +41,14 @@ module FirefoxJson
         byte * offset
       end.sum
       string = LZ4.block_decode(string[MOZ_PREFIX..-1])
-      if string.size != size
-        raise "Expected size #{size} != #{string.size}"
+      if string.bytesize != size
+        raise "Expected size #{size} != #{string.bytesize}"
       end
-      string
+      string.force_encoding(Encoding::UTF_8)
     end
 
     def self.compress(string)
-      size = string.size
+      size = string.bytesize
       if size > MAX_SIZE
         raise FileTooLarge, 'Content over 4GB!'
       end
