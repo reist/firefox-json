@@ -16,7 +16,11 @@ module FirefoxJson
       end
 
       def session
-        Session.new(path)
+        Session.default(path)
+      end
+
+      def recovery_session
+        Session.recovery(path)
       end
     end
 

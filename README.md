@@ -2,6 +2,8 @@
 
 `firefox-json` is a library to view and/or manipulate the json files in Firefox profiles.
 
+It's capable of reading both the older .js and the new .jsonlz4 files.
+
 ## Installation
 
 Add this line to your application's Gemfile:

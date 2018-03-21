@@ -1,4 +1,4 @@
-require 'oj'
+require 'firefox-json/js_file'
 
 module FirefoxJson
   module Session
@@ -29,7 +29,7 @@ module FirefoxJson
 
       def reload
         raise ArgumentError, 'Path not given' unless @path
-        @data = Oj.load_file(@path, :mode => :strict)
+        @data = JsFile.load_file(@path)
       end
 
       def dump
@@ -39,7 +39,7 @@ module FirefoxJson
       def save path=nil
         path ||= @path
         raise ArgumentError, 'Path not given' unless path
-        File.open(path, 'w') {|file| file.write Oj.dump(dump, :mode => :strict)}
+        JsFile.save(path, dump)
       end
 
       def self.inherited klass
@@ -254,15 +254,30 @@ module FirefoxJson
 
       def to_s
         closed_text = ' closed='+closed_windows.size.to_s if closed_windows.size>0
-        warning = File.basename(path) if File.basename(path) != 'sessionstore.js'
+        fname = File.basename(path).split('.')[0..-2].join('.')
+        warning = fname if fname != 'sessionstore'
         "#<FirefoxJson::Session##{warning} windows=#{windows.size}#{closed_text}>"
+      end
+
+      def self.default_file(path)
+        Dir["#{path}/sessionstore.jsonlz4",
+            "#{path}/sessionstore.js"][0]
+      end
+
+      def self.recovery_file(path)
+        Dir["#{path}/sessionstore-backups/recovery.jsonlz4",
+            "#{path}/sessionstore-backups/recovery.js"][0]
+      end
+
+      def self.file(path)
+        default_file(path) || recovery_file(path)
       end
     end
 
     BAD_ARG = 'Not Firefox session data'.freeze
 
     def self.load string, path=nil
-      data = Oj.load(string, :mode => :strict)
+      data = JsFile.load(string)
       raise ArgumentError, BAD_ARG unless data.is_a?(Hash)
       klass = Base.choose_for(data)
       raise RuntimeError, BAD_ARG unless klass
@@ -273,10 +288,14 @@ module FirefoxJson
       load IO.read(path), path
     end
 
-    def self.new(path)
-      load_file File.join(path, 'sessionstore.js')
+    def self.default(path)
+      load_file Session.file(path)
     rescue
-      load_file File.join(path, 'sessionstore-backups', 'recovery.js')
+      load_file session.recovery_file(path)
+    end
+
+    def self.recovery(path)
+      load_file session.recovery_file(path)
     end
   end
 end

@@ -26,4 +26,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency 'rspec', '~> 3.2'
   spec.add_runtime_dependency 'oj', '~> 3.5'
   spec.add_runtime_dependency 'inifile', '~> 3.0'
+  spec.add_runtime_dependency 'extlz4', '~> 0.2.5'
 end

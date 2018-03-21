@@ -1,0 +1,7 @@
+RSpec.describe FirefoxJson::JsFile do
+  it 'decompresses what it compresses' do
+    string = 'Demo String'
+    compressed = FirefoxJson::JsFile.compress(string)
+    expect(FirefoxJson::JsFile.decompress(compressed)).to eq(string)
+  end
+end
