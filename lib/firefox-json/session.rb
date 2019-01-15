@@ -289,13 +289,14 @@ module FirefoxJson
     end
 
     def self.default(path)
-      load_file Session.file(path)
-    rescue
-      load_file session.recovery_file(path)
+      file = Session.file(path) || Session.recovery_file(path)
+      raise "No session file found under #{path}" if !file
+
+      load_file file
     end
 
     def self.recovery(path)
-      load_file session.recovery_file(path)
+      load_file Session.recovery_file(path)
     end
   end
 end
